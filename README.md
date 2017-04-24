@@ -54,4 +54,4 @@ To run the tests for this pintool, run `make test` from the main directory.
 Documentation
 -------------
 
-Full documentation can be found here: [http://NeatTool.github.io/NEAT/] (http://NeatTool.github.io/NEAT/)
+Full documentation can be found here: http://NeatTool.github.io/NEAT/
