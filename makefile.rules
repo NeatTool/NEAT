@@ -1,0 +1,203 @@
+##############################################################
+#
+# This file includes all the test targets as well as all the
+# non-default build rules and test recipes.
+#
+##############################################################
+
+
+##############################################################
+#
+# Test targets
+#
+##############################################################
+
+###### Place all generic definitions here ######
+
+# This defines tests which run tools of the same name.  This is simply for convenience to avoid
+# defining the test name twice (once in TOOL_ROOTS and again in TEST_ROOTS).
+# Tests defined here should not be defined in TOOL_ROOTS and TEST_ROOTS.
+TEST_TOOL_ROOTS :=
+
+# This defines the tests to be run that were not already defined in TEST_TOOL_ROOTS.
+TEST_ROOTS := \
+	ftrace_normal_fp_implementation \
+	ftrace_replace_fp_ins_simple \
+	ftrace_replace_fp_ins_complex \
+	ftrace_function_stack_replacement_simple \
+	ftrace_function_stack_replacement_nested \
+	ftrace_current_function_replacement_simple \
+	ftrace_current_function_replacement_nested \
+	ftrace_normal_fp_implementation_multithreaded \
+	ftrace_replace_fp_ins_simple_multithreaded \
+	ftrace_replace_fp_ins_complex_multithreaded
+
+# This defines a list of tests that should run in the "short" sanity. Tests in this list must also
+# appear either in the TEST_TOOL_ROOTS or the TEST_ROOTS list.
+# If the entire directory should be tested in sanity, assign TEST_TOOL_ROOTS and TEST_ROOTS to the
+# SANITY_SUBSET variable in the tests section below (see example in makefile.rules.tmpl).
+SANITY_SUBSET :=
+
+# This defines the tools which will be run during the the tests, and were not already defined in
+# TEST_TOOL_ROOTS.
+TOOL_ROOTS := ftrace
+
+# This defines the static analysis tools which will be run during the the tests. They should not
+# be defined in TEST_TOOL_ROOTS. If a test with the same name exists, it should be defined in
+# TEST_ROOTS.
+# Note: Static analysis tools are in fact executables linked with the Pin Static Analysis Library.
+# This library provides a subset of the Pin APIs which allows the tool to perform static analysis
+# of an application or dll. Pin itself is not used when this tool runs.
+SA_TOOL_ROOTS :=
+
+# This defines all the applications that will be run during the tests.
+APP_ROOTS := sse_sample_app sse_multithreaded_app
+
+# This defines any additional object files that need to be compiled.
+OBJECT_ROOTS :=
+
+# This defines any additional dlls (shared objects), other than the pintools, that need to be compiled.
+DLL_ROOTS = $(FP_SELECTOR_REGISTRY_LIB_BASE)
+
+# This defines any static libraries (archives), that need to be built.
+LIB_ROOTS :=
+
+##############################################################
+#
+# Test recipes
+#
+##############################################################
+
+# This section contains recipes for tests other than the default.
+# See makefile.default.rules for the default test rules.
+# All tests in this section should adhere to the naming convention: <testname>.test
+
+%.test: export TEST                   = test
+%.test: EXPECTED_TOOL_OUTPUT          = tests/integration/$(@:.test=.reference)
+%.test: EXPECTED_STDOUT               = tests/integration/$(@:.test=.stdout.reference)
+%.test: EXPECTED_BIT_COUNT            = tests/integration/$(@:.test=.bits.reference)
+%.test: EXPECTED_FUNCTION_FP_OP_COUNT = tests/integration/$(@:.test=.op_count.reference)
+%.test: ACTUAL_TOOL_OUTPUT            = $(@:.test=.out)
+%.test: ACTUAL_STDOUT                 = $(@:.test=.stdout.out)
+%.test: ACTUAL_BIT_COUNT              = $(@:.test=.bits.out)
+%.test: ACTUAL_FUNCTION_FP_OP_COUNT   = $(@:.test=.op_count.out)
+%.test: FTRACE_TEST_FLAGS             = -print_fp_ops $(ACTUAL_TOOL_OUTPUT)
+%.test: FTRACE_TEST_FLAGS            += -print_fp_bits_manipulated $(ACTUAL_BIT_COUNT)
+%.test: FTRACE_TEST_FLAGS            += -print_function_num_fp_ops $(ACTUAL_FUNCTION_FP_OP_COUNT)
+%.test: FTRACE_TOOL                   = $(OBJDIR)ftrace$(PINTOOL_SUFFIX)
+%.test: TEST_APP                      = $(OBJDIR)sse_sample_app$(EXE_SUFFIX)
+
+%.test: $(OBJDIR)sse_sample_app$(EXE_SUFFIX)
+	$(MAKE)
+	$(PIN) -t $(FTRACE_TOOL) $(FTRACE_TEST_FLAGS) -- $(TEST_APP) > $(ACTUAL_STDOUT)
+	$(DIFF) $(ACTUAL_TOOL_OUTPUT) $(EXPECTED_TOOL_OUTPUT)
+	$(DIFF) $(ACTUAL_STDOUT) $(EXPECTED_STDOUT)
+	$(DIFF) $(ACTUAL_BIT_COUNT) $(EXPECTED_BIT_COUNT)
+	$(DIFF) $(ACTUAL_FUNCTION_FP_OP_COUNT) $(EXPECTED_FUNCTION_FP_OP_COUNT)
+	$(RM) $(ACTUAL_TOOL_OUTPUT) $(ACTUAL_STDOUT) $(ACTUAL_BIT_COUNT) $(ACTUAL_FUNCTION_FP_OP_COUNT)
+
+%multithreaded.test: TEST_APP = $(OBJDIR)sse_multithreaded_app$(EXE_SUFFIX)
+%multithreaded.test: $(OBJDIR)sse_multithreaded_app$(EXE_SUFFIX)
+	$(MAKE)
+	$(PIN) -t $(FTRACE_TOOL) $(FTRACE_TEST_FLAGS) -- $(TEST_APP) > $(ACTUAL_STDOUT)
+	$(PYTHON) tests/check_valid_output.py $(ACTUAL_TOOL_OUTPUT)
+	$(DIFF) $(ACTUAL_STDOUT) $(EXPECTED_STDOUT)
+	$(DIFF) $(ACTUAL_BIT_COUNT) $(EXPECTED_BIT_COUNT)
+	$(DIFF) $(ACTUAL_FUNCTION_FP_OP_COUNT) $(EXPECTED_FUNCTION_FP_OP_COUNT)
+	$(RM) $(ACTUAL_TOOL_OUTPUT) $(ACTUAL_STDOUT) $(ACTUAL_BIT_COUNT) $(ACTUAL_FUNCTION_FP_OP_COUNT)
+
+ftrace_replace_fp_ins_simple.test ftrace_replace_fp_ins_simple_multithreaded.test: FTRACE_TEST_FLAGS += -fp_selector_name test_simple
+
+ftrace_replace_fp_ins_complex.test ftrace_replace_fp_ins_complex_multithreaded.test: FTRACE_TEST_FLAGS += -fp_selector_name test_complex
+
+ftrace_function_stack_replacement_simple.test: FTRACE_TEST_FLAGS += -fp_selector_name test_simple_function_stack
+
+ftrace_function_stack_replacement_nested.test: FTRACE_TEST_FLAGS += -fp_selector_name test_nested_function_stack
+
+ftrace_current_function_replacement_simple.test: FTRACE_TEST_FLAGS += -fp_selector_name test_simple_current_function
+
+ftrace_current_function_replacement_nested.test: FTRACE_TEST_FLAGS += -fp_selector_name test_nested_current_function
+
+
+##############################################################
+#
+# Build rules
+#
+##############################################################
+
+.DELETE_ON_ERROR:
+.SECONDEXPANSION:
+
+# This section contains the build rules for all binaries that have special build rules.
+# See makefile.default.rules for the default build rules.
+
+# Location of the shared library containing the fp selector registry
+FP_SELECTOR_REGISTRY_LIB_BASE := ftrace_fp_selector_registry
+FP_SELECTOR_REGISTRY_LIB := $(CURDIR)/$(OBJDIR)$(DLL_PREFIX)$(FP_SELECTOR_REGISTRY_LIB_BASE)$(DLL_SUFFIX)
+
+# Adds project-specific compiler flags
+TOOL_CXXFLAGS += -MMD -MP -Isrc/ -std=gnu++11
+APP_CXXFLAGS_NOOPT += -MMD -MP -Isrc/ -std=gnu11
+
+###### Special objects' build rules ######
+
+PINTOOL_OBJS := $(patsubst src/%.cpp,$(OBJDIR)%$(OBJ_SUFFIX),$(wildcard src/pintool/*.cpp))
+REGISTRY_OBJS := $(patsubst src/%.cpp,$(OBJDIR)%$(OBJ_SUFFIX),$(wildcard src/client_lib/registry/*.cpp))
+REGISTRY_INTERNAL_OBJS := $(patsubst src/%.cpp,$(OBJDIR)%$(OBJ_SUFFIX),$(wildcard src/client_lib/registry/internal/*.cpp))
+FP_SELECTORS_OBJS := $(patsubst src/%.cpp,$(OBJDIR)%$(OBJ_SUFFIX),$(wildcard src/client_lib/fp_selectors/*.cpp))
+DEFAULT_FP_SELECTORS_OBJS := $(patsubst src/%.cpp,$(OBJDIR)%$(OBJ_SUFFIX),$(wildcard src/client_lib/default_fp_selectors/*.cpp))
+INTERFACES_OBJS := $(patsubst src/%.cpp,$(OBJDIR)%$(OBJ_SUFFIX),$(wildcard src/client_lib/interfaces/*.cpp))
+TEST_OBJS := $(patsubst %.cpp,$(OBJDIR)%$(OBJ_SUFFIX),$(wildcard tests/*.cpp))
+
+FTRACE_OBJS := $(PINTOOL_OBJS)
+CLIENT_LIB_OBJS := $(REGISTRY_OBJS) $(REGISTRY_INTERNAL_OBJS) $(FP_SELECTORS_OBJS) $(DEFAULT_FP_SELECTORS_OBJS) $(INTERFACES_OBJS)
+
+$(OBJDIR)pintool $(OBJDIR)client_lib/registry $(OBJDIR)client_lib/registry/internal $(OBJDIR)client_lib/fp_selectors $(OBJDIR)client_lib/default_fp_selectors $(OBJDIR)client_lib/interfaces $(OBJDIR)tests:
+	@mkdir -p $@
+
+# Compiles pintool-specific sources
+$(OBJDIR)%.o: src/%.cpp | $$(@D)
+	$(CXX) $(TOOL_CXXFLAGS) $(COMP_OBJ)$@ $<
+
+$(OBJDIR)tests/%.o: tests/%.cpp | $(OBJDIR)tests
+	$(CXX) $(TOOL_CXXFLAGS) $(COMP_OBJ)$@ $<
+
+# Tracks header dependencies for future recompilation
+$(OBJDIR)%.d: %.cpp
+
+-include $(OBJDIR)*.d
+
+###### Special tools' build rules ######
+
+$(OBJDIR)ftrace$(PINTOOL_SUFFIX): $(FTRACE_OBJS) | $(FP_SELECTOR_REGISTRY_LIB)
+	$(LINKER) $(TOOL_LDFLAGS) $(LINK_EXE)$@ $^ $(FP_SELECTOR_REGISTRY_LIB) $(TOOL_LPATHS) $(TOOL_LIBS)
+
+###### Special applications' build rules ######
+
+# Instrumented application used in integration tests.
+$(OBJDIR)sse_sample_app$(EXE_SUFFIX): tests/integration/test_apps/sse_sample_app.c
+	$(APP_CC) $(APP_CXXFLAGS_NOOPT) $(COMP_EXE)$@ $< $(APP_LDFLAGS_NOOPT) $(APP_LIBS)
+
+# Instrumented multithreaded application used in integration tests.
+$(OBJDIR)sse_multithreaded_app$(EXE_SUFFIX): tests/integration/test_apps/sse_multithreaded_app.c
+	$(APP_CC) $(APP_CXXFLAGS_NOOPT) $(COMP_EXE)$@ $< $(APP_LDFLAGS_NOOPT) $(APP_LIBS)
+
+###### Special libraries' build rules ######
+
+# Compiles a user library that can be used as a floating point implementation
+# during instrumentation
+$(FP_SELECTOR_REGISTRY_LIB): $(CLIENT_LIB_OBJS)
+	$(APP_CXX) $(APP_CXXFLAGS) $(DLL_CXXFLAGS) -Wl,--hash-style=sysv $(COMP_EXE)$@ $^ $(APP_LDFLAGS) $(DLL_LDFLAGS) $(TOOL_LPATHS) $(TOOL_LIBS)
+
+ifdef TEST
+
+$(FP_SELECTOR_REGISTRY_LIB): $(TEST_OBJS)
+
+endif
+
+###### Special target rules ######
+
+# Generates documentation
+.PHONY: html
+html: Doxyfile
+	doxygen $^
